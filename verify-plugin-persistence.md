@@ -123,6 +123,10 @@ until [ "$(docker logs <container> 2>&1 | grep -c 'Done (')" -ge 1 ]; do sleep 1
 
 Start on the plugin's **default** backend first and confirm it still works. That is your regression baseline — a refactor of the storage-selection code can break the path nobody is looking at.
 
+**The container builds its own jar, and the entrypoint overwrites yours.** `post-create.sh` copies the image's jar into `plugins/` on every start, so a jar you `docker cp` in — or drop into the bind-mounted `plugins/` directory — is silently replaced, and you end up verifying the code as of the last image build. After changing plugin code you must `docker compose build` again. The Spigot/BuildTools layers are cached, so a rebuild is minutes rather than the original half hour. Confirm which code you are actually running by checking for a log line or behaviour unique to your change; do not assume.
+
+**Note also that `docker compose up -d` recreates the container when the compose config changed**, which resets the log. A cumulative wait like `grep -c 'Done (' -ge 5` will then never be satisfied. Re-count from zero after any recreate, or scope the wait with `docker logs --since`.
+
 ### 5 — Open a console channel
 
 `compose.yml` sets neither `stdin_open` nor `tty`, so there is no console to type into. Enable RCON.
@@ -246,6 +250,8 @@ Consult when something behaves oddly.
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
 | `NoClassDefFoundError` on the server only | Transitive dependency missing from the shadow jar's `include(dependency(...))` list. |
 | Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping. |
+| Wait loop never returns | The container was recreated and the log reset, so a cumulative count can no longer be reached. |
+| Fix appears to have no effect on the server | The entrypoint copied the image's jar over yours. Rebuild the image; do not hot-copy. |
 | RCON command produces no output | The command is async; check the server log, not the response. |
 | `Conflict. The container name "…" is already in use` | Stale exited container. `docker rm <name>`. |
 | Gradle: `Unexpected lock protocol found in lock file` | Corrupt cache. `./gradlew --stop && rm -rf ~/.gradle/caches/<version>/javaCompile`. |
