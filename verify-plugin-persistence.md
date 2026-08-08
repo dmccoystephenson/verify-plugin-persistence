@@ -50,6 +50,9 @@ Write down, explicitly:
 - Every entity type and its backing file/table.
 - Which backends exist (`database`, `json`, flatfile, …) and the config key that selects them.
 - Which entity is the **root** — the one everything else references. For Medieval Factions that is the faction. Verifying leaf entities while the root is broken proves nothing, and leaf entities will often appear to work.
+- **Which types carry something a reflective serializer cannot handle** — a framework reference, `Instant`, `UUID`, a value class inside a generic collection, a sealed hierarchy. Grep the domain classes for those field types; each one is a candidate for exactly the bugs this skill exists to catch.
+
+Then cover **every** repository, not a sample. Two separate write-only bugs in Medieval Factions PR #1944 were each found only by testing the specific repository that had none — the untested ones are untested precisely because nobody looked at them.
 
 ### 2 — Cheap proof first: exercise the real repositories in a JVM test
 
@@ -180,6 +183,8 @@ All four parts are required. Each catches something the others miss.
 | **c. Reload** | Restart, then confirm the startup log reports the right count | Deserialization failures; write-only formats |
 | **d. Dereference** | A startup task that reads a *derived* property runs clean | Framework refs deserialized as `null` — the file looks perfect and every read NPEs |
 
+Part (c) is worth doing per entity type, not just for the root. A repository that swallows read failures and reports "file is empty" will pass (a) and (b) while being completely unreadable — and will then overwrite the stored data on the next write. If a `catch` in the load path returns an empty collection, treat that entity type as unverified until a read has actually returned something.
+
 For (b), assert the negative explicitly:
 
 ```bash
@@ -248,6 +253,7 @@ Consult when something behaves oddly.
 | `JsonIOException: Failed making field 'java.util.ResourceBundle#parent' accessible` | A domain object holds a plugin/server reference and was handed to a reflective serializer. Persist via DTOs instead. |
 | Tests pass but validation never runs | `getResource` was mocked to `null`, so schema loading threw and validation was silently disabled. |
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
+| Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
 | `NoClassDefFoundError` on the server only | Transitive dependency missing from the shadow jar's `include(dependency(...))` list. |
 | Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping. |
 | Wait loop never returns | The container was recreated and the log reset, so a cumulative count can no longer be reached. |
