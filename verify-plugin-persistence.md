@@ -110,8 +110,8 @@ This is the only way to catch "works in tests, `NoClassDefFoundError` on the ser
 
 ```bash
 cp sample.env .env
-# Trim optional plugins to cut build time and log noise:
-sed -i 's/^CURRENCIES_ENABLED=.*/CURRENCIES_ENABLED=false/; s/^DYNMAP_ENABLED=.*/DYNMAP_ENABLED=false/; s/^PLACEHOLDER_API_ENABLED=.*/PLACEHOLDER_API_ENABLED=false/' .env
+# Trim optional plugins to cut startup log noise (the entrypoint reads these on every start; they do not affect the build):
+sed -i 's/^CURRENCIES_ENABLED=.*/CURRENCIES_ENABLED=false/; s/^DYNMAP_ENABLED=.*/DYNMAP_ENABLED=false/; s/^PLACEHOLDER_API_ENABLED=.*/PLACEHOLDER_API_ENABLED=false/; s/^SERVERUTILS_ENABLED=.*/SERVERUTILS_ENABLED=false/' .env
 docker compose build      # 20-30 min: installs two JDKs, builds Ponder, runs BuildTools for Spigot
 docker compose up -d
 ```
@@ -170,6 +170,12 @@ Configure the plugin for the backend under test and restart:
 sed -i "s/^  type: database/  type: json/" testmcserver/plugins/<Plugin>/config.yml
 ```
 
+`sed` exits 0 even when its pattern matched nothing, so confirm the switch took before trusting anything that follows — otherwise you verify the default backend twice. For Medieval Factions, the startup log reports the backend it selected:
+
+```bash
+docker logs --since 5m <container> 2>&1 | grep 'Using storage type:'   # expect the backend under test
+```
+
 **Async commands return before they finish.** RCON will show the "starting…" message and nothing else. Never treat empty or optimistic command output as success — verify against the log and the filesystem.
 
 ### 7 — The four-part persistence proof
@@ -197,7 +203,7 @@ print("LEAKED FRAMEWORK REF:", '"plugin"' in open('testmcserver/<data-dir>/<enti
 EOF
 ```
 
-Part (d) is the one people skip. A reflective deserializer will happily produce an object whose framework field is `null`; the data file is flawless and the plugin NPEs the moment anything reads a derived property. Pick a startup task that touches one — for Medieval Factions, "Disabling neutrality for existing factions" reads `faction.flags[plugin.flags.neutral]` and therefore proves the plugin reference was re-attached. Then confirm the log is clean:
+Part (d) is the one people skip. A reflective deserializer will happily produce an object whose framework field is `null`; the data file is flawless and the plugin NPEs the moment anything reads a derived property. Pick a startup task that touches one, and read its code to confirm it actually dereferences the framework reference rather than only reading stored values. For Medieval Factions, "Disabling neutrality for existing factions" is logged only when `factions.allowNeutrality` is `false` (the default); it reads `faction.flags[plugin.flags.isNeutral]`, but `MfFlagValues.get` looks the value up in the stored `valuesByName` map without touching the faction's `plugin` field — so it proves the factions loaded and their flags are readable, **not** that the plugin reference was re-attached. A property that does dereference it is `MfFaction.power` (it calls `plugin.services.playerService`); until you have exercised a read of such a property, record (d) as not covered. Then confirm the log is clean:
 
 ```bash
 docker logs --since 5m <container> 2>&1 | grep -icE "exception|severe"   # expect 0
@@ -254,6 +260,8 @@ Consult when something behaves oddly.
 | Tests pass but validation never runs | `getResource` was mocked to `null`, so schema loading threw and validation was silently disabled. |
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
 | Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
+| Part (d) ran clean, yet reads NPE later in play | The chosen startup task only read stored values (e.g. a map lookup) and never dereferenced the framework reference. |
+| Backend "switched" but results match the default backend | The config `sed` matched nothing and exited 0. Check the startup log for the selected backend. |
 | `NoClassDefFoundError` on the server only | Transitive dependency missing from the shadow jar's `include(dependency(...))` list. |
 | Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping. |
 | Wait loop never returns | The container was recreated and the log reset, so a cumulative count can no longer be reached. |
@@ -273,7 +281,8 @@ Run this section when the skill may have drifted from reality — e.g. after the
 2. For each command, path, or assumption, verify it is still correct:
    - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh` still exist and carry the documented variables
    - The console-drivable command named in Step 6 still exists and still accepts a non-player sender
-   - The startup-task marker named in Step 7d still appears in the log and still reads a derived property
+   - The startup-task marker named in Step 7d still appears in the log, the config condition that gates it (`factions.allowNeutrality: false`) is still the default, and whether the code it runs now dereferences the faction's `plugin` field (it did not when last checked)
+   - The backend-selection log line named in Step 6 (`Using storage type:`) is still emitted at startup
    - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config
    - The shadow-jar relocation prefixes in Step 3 still match `build.gradle`
 3. For each problem found, open a GitHub issue:
