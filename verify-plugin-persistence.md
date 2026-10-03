@@ -232,9 +232,13 @@ Step 4 matters: without clearing first, an unchanged file proves nothing, becaus
 A live verification that is not encoded in a test will be re-broken. For every defect this skill finds, add a regression test **and prove it has teeth** by reverting the fix and watching it fail:
 
 ```bash
-# neutralize the fix, run the new test, expect FAILED, then restore
-git stash && ./gradlew test --tests "*NewRegressionTest*"; git stash pop
+# stash only the fix — never the new test — run the test, expect FAILED, then restore
+git stash push -- <fix-paths>
+./gradlew test --tests "*NewRegressionTest*" --console=plain
+git stash pop
 ```
+
+`<fix-paths>` are the production files the fix changed. A bare `git stash` would stash the uncommitted test along with the fix, so the filter matches nothing. If `git stash push` prints `No local changes to save`, stop: nothing was neutralized, and the `pop` would apply an unrelated older stash. Read *why* the run failed. `No tests found for given includes` means the test was not on disk or is misnamed, not that it has teeth. The new test must run and fail on its own assertion.
 
 A test that passes both with and without the fix is not a regression test.
 
@@ -268,7 +272,8 @@ Consult when something behaves oddly.
 | Fix appears to have no effect on the server | The entrypoint copied the image's jar over yours. Rebuild the image; do not hot-copy. |
 | RCON command produces no output | The command is async; check the server log, not the response. |
 | `Conflict. The container name "…" is already in use` | Stale exited container. `docker rm <name>`. |
-| Gradle: `Unexpected lock protocol found in lock file` | Corrupt cache. `./gradlew --stop && rm -rf ~/.gradle/caches/<version>/javaCompile`. |
+| Regression test "fails" without the fix, but never ran | The test was stashed along with the fix, so `--tests` matched nothing and Gradle reported `No tests found for given includes`. Stash only the fix's paths (Step 9). |
+| Gradle: `Unexpected lock protocol found in lock file` | Corrupt cache. Run `./gradlew --stop`. Take `<version>` from the cache path in the error, `ls ~/.gradle/caches/<version>/javaCompile` to confirm that directory exists, then `rm -rf` exactly that directory. |
 | `docker system df` errors with "too many levels of symbolic links" | Docker Desktop/WSL overlay quirk; harmless, does not indicate a failing build. |
 
 ---
@@ -285,15 +290,15 @@ Run this section when the skill may have drifted from reality — e.g. after the
    - The backend-selection log line named in Step 6 (`Using storage type:`) is still emitted at startup
    - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config
    - The shadow-jar relocation prefixes in Step 3 still match `build.gradle`
-3. For each problem found, open a GitHub issue:
-   ```bash
-   gh issue create --repo dmccoystephenson/verify-plugin-persistence \
-     --title "<problem summary>" \
-     --body "$(cat <<'EOF'
+3. For each problem found, open a GitHub issue. Write the body to a scratch file first (with a file-writing tool, not shell redirection). Some agent harnesses reject `$(...)` command substitution, so do not inline the body with `--body "$(cat <<'EOF' ...)"`:
+   ```text
    **Section:** <which step or section is wrong>
    **Problem:** <what is incorrect>
    **Expected behavior:** <what it should do instead>
-   EOF
-   )"
+   ```
+   ```bash
+   gh issue create --repo dmccoystephenson/verify-plugin-persistence \
+     --title "<problem summary>" \
+     --body-file <body-file>
    ```
 4. Report a summary: how many issues were filed, or confirm the skill is up to date.
