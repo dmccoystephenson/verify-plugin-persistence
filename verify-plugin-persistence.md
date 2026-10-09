@@ -225,7 +225,7 @@ A migrator that reads A and writes B exercises both paths at once. Run the full 
 4. **Delete backend B's data**, then `migrate toA` → confirm it is recreated.
 5. Switch to A, restart → count matches and content is intact.
 
-Step 4 matters: without clearing first, an unchanged file proves nothing, because the migrator may have written nothing at all.
+Clearing B first (item 4) matters: without it, an unchanged file proves nothing, because the migrator may have written nothing at all.
 
 ### 9 — Turn the finding into a permanent test
 
@@ -238,7 +238,19 @@ git stash push -- <fix-paths>
 git stash pop
 ```
 
-`<fix-paths>` are the production files the fix changed. A bare `git stash` would stash the uncommitted test along with the fix, so the filter matches nothing. If `git stash push` prints `No local changes to save`, stop: nothing was neutralized, and the `pop` would apply an unrelated older stash. Read *why* the run failed. `No tests found for given includes` means the test was not on disk or is misnamed, not that it has teeth. The new test must run and fail on its own assertion.
+`<fix-paths>` are the production files the fix changed. A bare `git stash` would stash the uncommitted test along with the fix, so the filter matches nothing. If `git stash push` prints `No local changes to save`, stop: nothing was neutralized, and the `pop` would apply an unrelated older stash. That is the usual state once the fix is committed — use the committed-fix form instead.
+
+If the fix is already committed, restore only its production paths to their pre-fix content, run the test, then restore them. `<fix-sha>` is the commit that introduced the fix (the first one, if the fix spans several):
+
+```bash
+# overwrite only the fix's paths with their pre-fix content — never the test's paths
+git checkout <fix-sha>~1 -- <fix-paths>
+./gradlew test --tests "*NewRegressionTest*" --console=plain
+git checkout HEAD -- <fix-paths>      # mandatory: restore the fix
+git status --short                    # must show none of <fix-paths> as modified
+```
+
+The restore is not optional: skipping it leaves the fix reverted in the working tree, ready to be committed by the next `git commit -a`. If `<fix-paths>` had uncommitted edits, `git checkout` discards them without warning, so commit or stash those first. A file the fix newly created does not exist at `<fix-sha>~1`, so `git checkout` rejects it with `did not match any file(s) known to git`; leave it out of `<fix-paths>` and make sure the remaining paths still neutralize the fix. Read *why* the run failed. `No tests found for given includes` means the test was not on disk or is misnamed, not that it has teeth. The new test must run and fail on its own assertion.
 
 A test that passes both with and without the fix is not a regression test.
 
@@ -272,7 +284,8 @@ Consult when something behaves oddly.
 | Fix appears to have no effect on the server | The entrypoint copied the image's jar over yours. Rebuild the image; do not hot-copy. |
 | RCON command produces no output | The command is async; check the server log, not the response. |
 | `Conflict. The container name "…" is already in use` | Stale exited container. `docker rm <name>`. |
-| Regression test "fails" without the fix, but never ran | The test was stashed along with the fix, so `--tests` matched nothing and Gradle reported `No tests found for given includes`. Stash only the fix's paths (Step 9). |
+| Regression test "fails" without the fix, but never ran | The test was stashed along with the fix, so `--tests` matched nothing and Gradle reported `No tests found for given includes`. Neutralize only the fix's paths: `git stash push -- <fix-paths>` for an uncommitted fix, `git checkout <fix-sha>~1 -- <fix-paths>` for a committed one (Step 9). |
+| Teeth-check prints `No local changes to save` | The fix is already committed, so `git stash push` neutralized nothing. Use the committed-fix form in Step 9, and restore with `git checkout HEAD -- <fix-paths>`. |
 | Gradle: `Unexpected lock protocol found in lock file` | Corrupt cache. Run `./gradlew --stop`. Take `<version>` from the cache path in the error, `ls ~/.gradle/caches/<version>/javaCompile` to confirm that directory exists, then `rm -rf` exactly that directory. |
 | `docker system df` errors with "too many levels of symbolic links" | Docker Desktop/WSL overlay quirk; harmless, does not indicate a failing build. |
 
