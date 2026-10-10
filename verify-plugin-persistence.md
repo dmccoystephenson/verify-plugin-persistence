@@ -225,7 +225,7 @@ A migrator that reads A and writes B exercises both paths at once. Run the full 
 4. **Delete backend B's data**, then `migrate toA` → confirm it is recreated.
 5. Switch to A, restart → count matches and content is intact.
 
-Step 4 matters: without clearing first, an unchanged file proves nothing, because the migrator may have written nothing at all.
+Item 4 matters: without clearing first, an unchanged file proves nothing, because the migrator may have written nothing at all.
 
 ### 9 — Turn the finding into a permanent test
 
@@ -239,6 +239,17 @@ git stash pop
 ```
 
 `<fix-paths>` are the production files the fix changed. A bare `git stash` would stash the uncommitted test along with the fix, so the filter matches nothing. If `git stash push` prints `No local changes to save`, stop: nothing was neutralized, and the `pop` would apply an unrelated older stash. Read *why* the run failed. `No tests found for given includes` means the test was not on disk or is misnamed, not that it has teeth. The new test must run and fail on its own assertion.
+
+If the fix is already committed, `git stash push` has nothing to stash. Neutralize it instead by restoring only the fix's production paths to their pre-fix content in the working tree, then restoring them afterwards:
+
+```bash
+git status --short -- <fix-paths>      # must print nothing: the restore below discards uncommitted edits to these paths
+git checkout <fix-sha>~1 -- <fix-paths>
+./gradlew test --tests "*NewRegressionTest*" --console=plain
+git checkout HEAD -- <fix-paths>       # mandatory — otherwise the fix stays reverted in your tree
+```
+
+`<fix-sha>` is the commit that introduced the fix. A path the fix created does not exist at `<fix-sha>~1`, so git refuses it with `did not match any file(s) known to git` — leave such paths out of `<fix-paths>`. The restore is not optional: skip it and the next build, commit, or verification silently runs without the fix. Confirm with `git status --short -- <fix-paths>` that it prints nothing again.
 
 A test that passes both with and without the fix is not a regression test.
 
@@ -272,7 +283,9 @@ Consult when something behaves oddly.
 | Fix appears to have no effect on the server | The entrypoint copied the image's jar over yours. Rebuild the image; do not hot-copy. |
 | RCON command produces no output | The command is async; check the server log, not the response. |
 | `Conflict. The container name "…" is already in use` | Stale exited container. `docker rm <name>`. |
-| Regression test "fails" without the fix, but never ran | The test was stashed along with the fix, so `--tests` matched nothing and Gradle reported `No tests found for given includes`. Stash only the fix's paths (Step 9). |
+| Regression test "fails" without the fix, but never ran | The test was stashed along with the fix, so `--tests` matched nothing and Gradle reported `No tests found for given includes`. Stash only the fix's paths, or — if the fix is already committed — check out only the fix's paths from `<fix-sha>~1` and restore them from `HEAD` afterwards (Step 9). |
+| Fixed defect reappears after a teeth-check | The committed-fix form's restore (`git checkout HEAD -- <fix-paths>`) was skipped, so the fix's paths were left at their pre-fix content (Step 9). |
+| `error: pathspec '…' did not match any file(s) known to git` during a teeth-check | A path in `<fix-paths>` was created by the fix and does not exist at `<fix-sha>~1`. Leave it out (Step 9). |
 | Gradle: `Unexpected lock protocol found in lock file` | Corrupt cache. Run `./gradlew --stop`. Take `<version>` from the cache path in the error, `ls ~/.gradle/caches/<version>/javaCompile` to confirm that directory exists, then `rm -rf` exactly that directory. |
 | `docker system df` errors with "too many levels of symbolic links" | Docker Desktop/WSL overlay quirk; harmless, does not indicate a failing build. |
 
