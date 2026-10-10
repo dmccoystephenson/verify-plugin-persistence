@@ -249,7 +249,7 @@ git checkout <fix-sha>~1 -- <fix-paths>
 git checkout HEAD -- <fix-paths>       # mandatory — otherwise the fix stays reverted in your tree
 ```
 
-`<fix-sha>` is the commit that introduced the fix. A path the fix created does not exist at `<fix-sha>~1`, so git refuses it with `did not match any file(s) known to git` — leave such paths out of `<fix-paths>`. The restore is not optional: skip it and the next build, commit, or verification silently runs without the fix. Confirm with `git status --short -- <fix-paths>` that it prints nothing again.
+`<fix-sha>` is the commit that introduced the fix. Run `git diff <fix-sha>~1 HEAD -- <fix-paths>` first and confirm it shows only the fix: this form also reverts any later change to those paths, which can make the test fail for an unrelated reason. A path the fix created does not exist at `<fix-sha>~1`, so git refuses it with `did not match any file(s) known to git` — leave such paths out of `<fix-paths>`. The restore is not optional: skip it and the next build, commit, or verification silently runs without the fix. Confirm with `git status --short -- <fix-paths>` that it prints nothing again.
 
 A test that passes both with and without the fix is not a regression test.
 
