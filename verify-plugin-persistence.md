@@ -297,11 +297,14 @@ Run this section when the skill may have drifted from reality — e.g. after the
 
 1. Read this skill file from top to bottom.
 2. For each command, path, or assumption, verify it is still correct:
-   - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh` still exist and carry the documented variables
+   - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh`, `down.sh` still exist and carry the documented variables (Step 4's `CURRENCIES_ENABLED`, `DYNMAP_ENABLED`, `PLACEHOLDER_API_ENABLED`, `SERVERUTILS_ENABLED`)
+   - `post-create.sh` still copies the image's jar into `plugins/` on every start (Step 4) — if it stopped, hot-copying a jar becomes viable and the rebuild advice is stale
+   - `compose.yml` still sets neither `stdin_open` nor `tty`, its service is still named `testmcserver`, and `testmcserver/server.properties` still ships `enable-rcon=false` with an empty `rcon.password=` (Step 5) — otherwise the RCON `sed` matches nothing
    - The console-drivable command named in Step 6 still exists and still accepts a non-player sender
    - The startup-task marker named in Step 7d still appears in the log, the config condition that gates it (`factions.allowNeutrality: false`) is still the default, and whether the code it runs now dereferences the faction's `plugin` field (it did not when last checked)
+   - The property Step 7d names as a real dereference (`MfFaction.power`, via `plugin.services.playerService`) still reads the faction's `plugin` field
    - The backend-selection log line named in Step 6 (`Using storage type:`) is still emitted at startup
-   - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config
+   - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config, and `database` is still the default `storage.type` that Step 6's `sed` replaces
    - The shadow-jar relocation prefixes in Step 3 still match `build.gradle`
 3. For each problem found, open a GitHub issue. Write the body to a scratch file first (with a file-writing tool, not shell redirection). Some agent harnesses reject `$(...)` command substitution, so do not inline the body with `--body "$(cat <<'EOF' ...)"`:
    ```text
