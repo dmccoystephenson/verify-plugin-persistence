@@ -86,6 +86,8 @@ x=open('build/test-results/test/TEST-<pkg>.ProbeTest.xml',encoding='utf-8',error
 for m in re.findall(r'<system-out>(.*?)</system-out>', x, re.S): print(html.unescape(m))"
 ```
 
+`<pkg>` is the probe test class's package: Gradle names each result file `TEST-<fully.qualified.ClassName>.xml`, so `ls build/test-results/test/` shows the exact name.
+
 A repository that throws here is broken; a repository whose file never appears on disk is broken even if nothing threw. **Delete the probe before committing** — it is a diagnostic, not a test. Convert what it found into a real regression test instead (see Step 9).
 
 ### 3 — Confirm the shaded jar, not just the classpath
@@ -116,7 +118,7 @@ docker compose build      # 20-30 min: installs two JDKs, builds Ponder, runs Bu
 docker compose up -d
 ```
 
-Run the build with `run_in_background: true`. If a stale container holds the name, `docker rm <name>` first — check it is `Exited` before removing.
+Run the build with `run_in_background: true`. If a stale container holds the name, `docker rm <name>` first — check it is `Exited` before removing. `<name>` here, and `<container>` in every later command, is the container name that `docker compose ps -a` lists in its `NAME` column.
 
 Wait for readiness, and **match on a marker that cannot be satisfied by a previous startup**. Counting occurrences is the reliable form:
 
@@ -145,7 +147,7 @@ services:
 EOF
 ```
 
-`compose.override.yml` is picked up automatically and must be **deleted during cleanup** — never commit it.
+`<password>` is any throwaway value; the RCON client below must send the same string in its auth packet. `compose.override.yml` is picked up automatically and must be **deleted during cleanup** — never commit it.
 
 Use a minimal RCON client (packet: `<int32 len><int32 id><int32 type><body>\0\0`; type 3 = auth, 2 = command):
 
@@ -170,7 +172,7 @@ Configure the plugin for the backend under test and restart:
 sed -i "s/^  type: '\?database'\?/  type: json/" testmcserver/plugins/<Plugin>/config.yml
 ```
 
-The pattern tolerates quotes because the default may be written either way. For Medieval Factions: the plugin ships `type: 'database'` in its bundled `config.yml`, and whether the server's re-saved copy keeps the quotes depends on the plugin's config rewrite at first start. A trailing comment after the value is left in place and does not affect parsing.
+`<Plugin>` is the `name` from the plugin's `plugin.yml`; Bukkit uses it for both the data folder under `plugins/` and the `Enabling <Plugin>` startup log line used in Step 7. The pattern tolerates quotes because the default may be written either way. For Medieval Factions: the plugin ships `type: 'database'` in its bundled `config.yml`, and whether the server's re-saved copy keeps the quotes depends on the plugin's config rewrite at first start. A trailing comment after the value is left in place and does not affect parsing.
 
 `sed` exits 0 even when its pattern matched nothing, so confirm the switch took before trusting anything that follows — otherwise you verify the default backend twice. For Medieval Factions, the startup log reports the backend it selected:
 
@@ -193,7 +195,7 @@ All four parts are required. Each catches something the others miss.
 
 Part (c) is worth doing per entity type, not just for the root. A repository that swallows read failures and reports "file is empty" will pass (a) and (b) while being completely unreadable — and will then overwrite the stored data on the next write. If a `catch` in the load path returns an empty collection, treat that entity type as unverified until a read has actually returned something.
 
-For (b), assert the negative explicitly:
+For (b), assert the negative explicitly. Take `<data-dir>` and `<entity>` from the entity-to-file list written down in Step 1; `<entities>` is the top-level key in that file that holds the list (open the file once to read it):
 
 ```bash
 python3 - <<'EOF'
@@ -219,7 +221,7 @@ docker logs <container> 2>&1 | awk '/Enabling <Plugin>/{n++} n==2'
 
 ### 8 — Migration round trip (only if the plugin has more than one backend)
 
-A migrator that reads A and writes B exercises both paths at once. Run the full circuit, restarting into each backend so the data is *read back by the plugin* rather than merely written:
+A migrator that reads A and writes B exercises both paths at once. `<cmd>` below is the plugin's root command, the one its migrate subcommand hangs off. Run the full circuit, restarting into each backend so the data is *read back by the plugin* rather than merely written:
 
 1. Backend A → create data → verify (Step 7).
 2. `/<cmd> migrate toB` → expect a non-zero migrated count for the root entity.
