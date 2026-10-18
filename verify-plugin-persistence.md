@@ -195,7 +195,7 @@ All four parts are required. Each catches something the others miss.
 
 Part (c) is worth doing per entity type, not just for the root. A repository that swallows read failures and reports "file is empty" will pass (a) and (b) while being completely unreadable — and will then overwrite the stored data on the next write. If a `catch` in the load path returns an empty collection, treat that entity type as unverified until a read has actually returned something.
 
-For (b), assert the negative explicitly. Take `<data-dir>`, `<entity>`, and the top-level key `<entities>` from the entity-to-file list written down in Step 1:
+For (b), assert the negative explicitly. Take `<data-dir>` and `<entity>` from the entity-to-file list written down in Step 1; `<entities>` is the top-level key in that file that holds the list (open the file once to read it):
 
 ```bash
 python3 - <<'EOF'
