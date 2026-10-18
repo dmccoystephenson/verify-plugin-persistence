@@ -167,8 +167,10 @@ For Medieval Factions: `/f admin create <name>` works from console, needs `mf.ad
 Configure the plugin for the backend under test and restart:
 
 ```bash
-sed -i "s/^  type: database/  type: json/" testmcserver/plugins/<Plugin>/config.yml
+sed -i "s/^  type: '\?database'\?/  type: json/" testmcserver/plugins/<Plugin>/config.yml
 ```
+
+The pattern tolerates quotes because the default may be written either way. For Medieval Factions: the plugin ships `type: 'database'` in its bundled `config.yml`, and whether the server's re-saved copy keeps the quotes depends on the plugin's config rewrite at first start. A trailing comment after the value is left in place and does not affect parsing.
 
 `sed` exits 0 even when its pattern matched nothing, so confirm the switch took before trusting anything that follows — otherwise you verify the default backend twice. For Medieval Factions, the startup log reports the backend it selected:
 
@@ -276,7 +278,7 @@ Consult when something behaves oddly.
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
 | Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
 | Part (d) ran clean, yet reads NPE later in play | The chosen startup task only read stored values (e.g. a map lookup) and never dereferenced the framework reference. |
-| Backend "switched" but results match the default backend | The config `sed` matched nothing and exited 0. Check the startup log for the selected backend. |
+| Backend "switched" but results match the default backend | The config `sed` matched nothing and exited 0 — e.g. a pattern that expected `type: database` unquoted met `type: 'database'`. Check the startup log for the selected backend. |
 | `NoClassDefFoundError` on the server only | Transitive dependency missing from the shadow jar's `include(dependency(...))` list. |
 | Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping. |
 | Wait loop never returns | The container was recreated and the log reset, so a cumulative count can no longer be reached. |
@@ -304,7 +306,7 @@ Run this section when the skill may have drifted from reality — e.g. after the
    - The startup-task marker named in Step 7d still appears in the log, the config condition that gates it (`factions.allowNeutrality: false`) is still the default, and whether the code it runs now dereferences the faction's `plugin` field (it did not when last checked)
    - The property Step 7d names as a real dereference (`MfFaction.power`, via `plugin.services.playerService`) still reads the faction's `plugin` field
    - The backend-selection log line named in Step 6 (`Using storage type:`) is still emitted at startup
-   - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config, and `database` is still the default `storage.type` that Step 6's `sed` replaces
+   - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config, and `database` (quoted or not) is still the default `storage.type` that Step 6's `sed` replaces
    - The shadow-jar relocation prefixes in Step 3 still match `build.gradle`
 3. For each problem found, open a GitHub issue. Write the body to a scratch file first (with a file-writing tool, not shell redirection). Some agent harnesses reject `$(...)` command substitution, so do not inline the body with `--body "$(cat <<'EOF' ...)"`:
    ```text
