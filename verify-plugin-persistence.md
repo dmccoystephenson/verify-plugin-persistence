@@ -41,9 +41,11 @@ Every step below exists because some variant of that went undetected.
 Before running anything, list the entities the change touches and where each is stored. Read the repository interfaces, not the docs.
 
 ```bash
-ls src/main/kotlin/**/[Ss]torage/**/*.kt src/main/java/**/repository/*.java 2>/dev/null
+find src/main \( -path '*/[Ss]torage/*' -name '*.kt' \) -o \( -path '*/repository/*' -name '*.java' \)
 grep -rn "interface Mf.*Repository" src/main --include=*.kt --include=*.java
 ```
+
+Use `find`, not a `**` glob: without `shopt -s globstar`, bash treats `**` as a single `*`, so a storage directory nested under a multi-level package matches nothing — and an empty listing reads as "no repositories to cover".
 
 Write down, explicitly:
 
@@ -276,6 +278,7 @@ Consult when something behaves oddly.
 | Symptom | Cause |
 |---|---|
 | `JsonIOException: Failed making field 'java.util.ResourceBundle#parent' accessible` | A domain object holds a plugin/server reference and was handed to a reflective serializer. Persist via DTOs instead. |
+| Step 1's source listing prints nothing, though the plugin has repositories | A `**` glob was used without `shopt -s globstar`, so it matched one directory level only. Use the `find` form (Step 1). |
 | Tests pass but validation never runs | `getResource` was mocked to `null`, so schema loading threw and validation was silently disabled. |
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
 | Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
