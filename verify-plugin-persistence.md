@@ -151,6 +151,12 @@ EOF
 
 `<password>` is any throwaway value; the RCON client below must send the same string in its auth packet. `compose.override.yml` is picked up automatically and must be **deleted during cleanup** — never commit it.
 
+The `sed` exits 0 even when a substitution matched nothing — e.g. `rcon.password=` already holds a value from an earlier run — so confirm both lines before starting the server:
+
+```bash
+grep -E '^(enable-rcon|rcon\.password)=' testmcserver/server.properties   # expect enable-rcon=true and your <password>
+```
+
 Use a minimal RCON client (packet: `<int32 len><int32 id><int32 type><body>\0\0`; type 3 = auth, 2 = command):
 
 ```python
@@ -288,6 +294,7 @@ Consult when something behaves oddly.
 | Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping. |
 | Wait loop never returns | The container was recreated and the log reset, so a cumulative count can no longer be reached. |
 | Fix appears to have no effect on the server | The entrypoint copied the image's jar over yours. Rebuild the image; do not hot-copy. |
+| RCON connection refused, or auth rejected | The `server.properties` `sed` matched nothing and exited 0 (RCON still disabled, or an old `rcon.password` kept), or `compose.override.yml` was not in place when the container started. Check both lines with the `grep` in Step 5. |
 | RCON command produces no output | The command is async; check the server log, not the response. |
 | `Conflict. The container name "…" is already in use` | Stale exited container. `docker rm <name>`. |
 | Regression test "fails" without the fix, but never ran | The test was stashed along with the fix, so `--tests` matched nothing and Gradle reported `No tests found for given includes`. Stash only the fix's paths, or — if the fix is already committed — check out only the fix's paths from `<fix-sha>~1` and restore them from `HEAD` afterwards (Step 9). |
