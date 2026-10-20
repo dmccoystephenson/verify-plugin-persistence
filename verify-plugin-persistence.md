@@ -294,7 +294,7 @@ Consult when something behaves oddly.
 | Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping. |
 | Wait loop never returns | The container was recreated and the log reset, so a cumulative count can no longer be reached. |
 | Fix appears to have no effect on the server | The entrypoint copied the image's jar over yours. Rebuild the image; do not hot-copy. |
-| RCON connection refused, or auth rejected | The `server.properties` `sed` matched nothing and exited 0 (RCON still disabled, or an old `rcon.password` kept), or `compose.override.yml` was not in place when the container started. Check both lines with the `grep` in Step 5. |
+| RCON connection refused, or auth rejected | The `server.properties` `sed` matched nothing and exited 0 (RCON still disabled, or an old `rcon.password` kept), or `compose.override.yml` was not in place when the container started, so port 25575 was never published. Check both lines with the `grep` in Step 5, and `docker compose ps` for the `25575` mapping. |
 | RCON command produces no output | The command is async; check the server log, not the response. |
 | `Conflict. The container name "…" is already in use` | Stale exited container. `docker rm <name>`. |
 | Regression test "fails" without the fix, but never ran | The test was stashed along with the fix, so `--tests` matched nothing and Gradle reported `No tests found for given includes`. Stash only the fix's paths, or — if the fix is already committed — check out only the fix's paths from `<fix-sha>~1` and restore them from `HEAD` afterwards (Step 9). |
