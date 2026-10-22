@@ -141,12 +141,15 @@ Start on the plugin's **default** backend first and confirm it still works. That
 ```bash
 docker compose down
 sed -i 's/enable-rcon=false/enable-rcon=true/; s/^rcon.password=$/rcon.password=<password>/' testmcserver/server.properties
-cat > compose.override.yml <<'EOF'
+```
+
+Then create `compose.override.yml` next to `compose.yml` with this content. Use a file-writing tool, not shell redirection: some agent harnesses reject `>`.
+
+```yaml
 services:
   testmcserver:
     ports:
       - "25575:25575"
-EOF
 ```
 
 `<password>` is any throwaway value; the RCON client below must send the same string in its auth packet. `compose.override.yml` is picked up automatically and must be **deleted during cleanup** — never commit it.
