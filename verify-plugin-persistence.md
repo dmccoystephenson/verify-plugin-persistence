@@ -47,6 +47,8 @@ grep -rn "interface Mf.*Repository" src/main --include=*.kt --include=*.java
 
 Use `find`, not a `**` glob: without `shopt -s globstar`, bash treats `**` as a single `*`, so a storage directory nested under a multi-level package matches nothing — and an empty listing reads as "no repositories to cover".
 
+For Medieval Factions: the `grep` pattern relies on its `Mf` prefix for repository interfaces. For any other plugin, substitute that plugin's own repository-interface naming first. Run unchanged, the `grep` prints nothing, which is the same false "no repositories to cover".
+
 Write down, explicitly:
 
 - Every entity type and its backing file/table.
@@ -288,6 +290,7 @@ Consult when something behaves oddly.
 |---|---|
 | `JsonIOException: Failed making field 'java.util.ResourceBundle#parent' accessible` | A domain object holds a plugin/server reference and was handed to a reflective serializer. Persist via DTOs instead. |
 | Step 1's source listing prints nothing, though the plugin has repositories | A `**` glob was used without `shopt -s globstar`, so it matched one directory level only. Use the `find` form (Step 1). |
+| Step 1's repository `grep` prints nothing, though the plugin has repository interfaces | The `Mf` prefix is Medieval Factions' naming; another plugin names its interfaces differently. Substitute that plugin's naming (Step 1). |
 | Tests pass but validation never runs | `getResource` was mocked to `null`, so schema loading threw and validation was silently disabled. |
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
 | Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
@@ -316,6 +319,7 @@ Run this section when the skill may have drifted from reality — e.g. after the
 1. Read this skill file from top to bottom.
 2. For each command, path, or assumption, verify it is still correct:
    - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh`, `down.sh` still exist and carry the documented variables (Step 4's `CURRENCIES_ENABLED`, `DYNMAP_ENABLED`, `PLACEHOLDER_API_ENABLED`, `SERVERUTILS_ENABLED`)
+   - Medieval Factions' repository interfaces still match Step 1's `interface Mf.*Repository` pattern. If they were renamed, the `grep` silently lists nothing
    - `.testcontainer/post-create.sh` still copies the image's jar into `plugins/` on every start (Step 4) — if it stopped, hot-copying a jar becomes viable and the rebuild advice is stale
    - `compose.yml` still sets neither `stdin_open` nor `tty`, its service is still named `testmcserver`, and the server-generated `testmcserver/server.properties` still defaults to `enable-rcon=false` with an empty `rcon.password=` (Step 5) — otherwise the RCON `sed` matches nothing
    - The console-drivable command named in Step 6 still exists and still accepts a non-player sender
