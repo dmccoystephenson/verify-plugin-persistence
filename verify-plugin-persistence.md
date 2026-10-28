@@ -239,10 +239,10 @@ A migrator that reads A and writes B exercises both paths at once. `<cmd>` below
 1. Backend A → create data → verify (Step 7).
 2. `/<cmd> migrate toB` → expect a non-zero migrated count for the root entity.
 3. Switch config to B, restart → the count must match.
-4. **Delete backend B's data**, then `migrate toA` → confirm it is recreated.
+4. **Delete backend A's data**, then `migrate toA` → confirm it is recreated.
 5. Switch to A, restart → count matches and content is intact.
 
-Item 4 matters: without clearing first, an unchanged file proves nothing, because the migrator may have written nothing at all.
+Item 4 matters: clear the migration *target*, not the source. A's data from item 1 is still on disk, so without clearing it an unchanged file proves nothing — the migrator may have written nothing at all. Deleting B's data instead leaves A's old file to pass the check, and if the migrator reads B's storage rather than memory, it also leaves nothing to migrate.
 
 ### 9 — Turn the finding into a permanent test
 
@@ -296,6 +296,7 @@ Consult when something behaves oddly.
 | Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
 | Part (d) ran clean, yet reads NPE later in play | The chosen startup task only read stored values (e.g. a map lookup) and never dereferenced the framework reference. |
 | Backend "switched" but results match the default backend | The config `sed` matched nothing and exited 0 — e.g. a pattern that expected `type: database` unquoted met `type: 'database'`. Check the startup log for the selected backend. |
+| Migration back to A reports success, but A's data was never rewritten | A's data was not cleared before `migrate toA`, so the file left from the first pass satisfied the check (Step 8, item 4). |
 | `NoClassDefFoundError` on the server only | Transitive dependency missing from the shadow jar's `include(dependency(...))` list. |
 | Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping. |
 | Wait loop never returns | The container was recreated and the log reset, so a cumulative count can no longer be reached. |
