@@ -242,7 +242,7 @@ A migrator that reads A and writes B exercises both paths at once. `<cmd>` below
 4. **Delete backend A's data**, then `migrate toA` → confirm it is recreated.
 5. Switch to A, restart → count matches and content is intact.
 
-Item 4 matters: clear the migration *target*, not the source. A's data from item 1 is still on disk, so without clearing it an unchanged file proves nothing — the migrator may have written nothing at all. Deleting B's data instead removes what `migrate toA` should read and leaves A's old file to pass the check.
+Item 4 matters: clear the migration *target*, not the source. A's data from item 1 is still on disk, so without clearing it an unchanged file proves nothing — the migrator may have written nothing at all. Deleting B's data instead leaves A's old file to pass the check, and if the migrator reads B's storage rather than memory, it also leaves nothing to migrate.
 
 ### 9 — Turn the finding into a permanent test
 
