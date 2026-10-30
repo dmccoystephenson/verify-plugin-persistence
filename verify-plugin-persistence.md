@@ -71,6 +71,8 @@ Write a temporary probe test that constructs each domain object **fully populate
        .thenAnswer { java.io.File("src/main/resources/schemas/factions.json").inputStream() }
    ```
 
+   For Medieval Factions: `schemas/factions.json` is one of the schemas it loads from the jar. For any other plugin, stub every resource that plugin actually loads; stubbing a path it never requests leaves validation off just the same.
+
 2. **Catch `Throwable`, don't assert.** The probe's job is to report what each repository does, not to stop at the first failure:
 
    ```kotlin
@@ -104,7 +106,7 @@ JAR=$(ls build/libs/*-all.jar)
 unzip -l "$JAR" | grep -E "schemas/|<your-lib>"          # resources and libs actually shipped
 ```
 
-If the change loads resources or uses a library reflectively, write a throwaway class that does exactly that against `-cp "$JAR"` alone. Relocated names apply:
+If the change loads resources or uses a library reflectively, write a throwaway class that does exactly that against `-cp "$JAR"` alone. Relocated names apply. For Medieval Factions, the prefix is `com.dansplugins.factionsystem.shadow`; for any other plugin, take it from the `relocate(...)` calls in its build script:
 
 ```java
 import com.dansplugins.factionsystem.shadow.org.everit.json.schema.loader.SchemaLoader;
@@ -121,6 +123,8 @@ sed -i 's/^CURRENCIES_ENABLED=.*/CURRENCIES_ENABLED=false/; s/^DYNMAP_ENABLED=.*
 docker compose build      # 20-30 min: installs two JDKs, builds Ponder, runs BuildTools for Spigot
 docker compose up -d
 ```
+
+For Medieval Factions: the four `*_ENABLED` variables are the optional plugins its `sample.env` defines, and the build-time comment describes its `Dockerfile`. For any other plugin, read its `sample.env` for the variables it actually defines before trimming.
 
 Run the build with `run_in_background: true`. If a stale container holds the name, `docker rm <name>` first — check it is `Exited` before removing. `<name>` here, and `<container>` in every later command, is the container name that `docker compose ps -a` lists in its `NAME` column.
 
@@ -321,6 +325,7 @@ Run this section when the skill may have drifted from reality — e.g. after the
 1. Read this skill file from top to bottom.
 2. For each command, path, or assumption, verify it is still correct:
    - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh`, `down.sh` still exist and carry the documented variables (Step 4's `CURRENCIES_ENABLED`, `DYNMAP_ENABLED`, `PLACEHOLDER_API_ENABLED`, `SERVERUTILS_ENABLED`)
+   - Step 2's example resource `src/main/resources/schemas/factions.json` still exists and is still loaded through `getResource`
    - Medieval Factions' repository interfaces still match Step 1's `interface Mf.*Repository` pattern. If they were renamed, the `grep` silently lists nothing
    - `.testcontainer/post-create.sh` still copies the image's jar into `plugins/` on every start (Step 4) — if it stopped, hot-copying a jar becomes viable and the rebuild advice is stale
    - `compose.yml` still sets neither `stdin_open` nor `tty`, its service is still named `testmcserver`, and the server-generated `testmcserver/server.properties` still defaults to `enable-rcon=false` with an empty `rcon.password=` (Step 5) — otherwise the RCON `sed` matches nothing
