@@ -307,6 +307,7 @@ Consult when something behaves oddly.
 | Fix appears to have no effect on the server | The entrypoint copied the image's jar over yours. Rebuild the image; do not hot-copy. |
 | RCON connection refused, or auth rejected | The `server.properties` `sed` matched nothing and exited 0 (RCON still disabled, or an old `rcon.password` kept), or `compose.override.yml` was not in place when the container started, so port 25575 was never published. Check both lines with the `grep` in Step 5, and `docker compose ps` for the `25575` mapping. |
 | RCON command produces no output | The command is async; check the server log, not the response. |
+| Console command is refused as player-only, or throws `ClassCastException` | The command needs a `Player` sender: it either checks for one or casts `sender` to `Player`. Pick a command that uses `sender` generically (Step 6). |
 | `Conflict. The container name "…" is already in use` | Stale exited container. Confirm `docker compose ps -a` shows it `Exited`, then `docker rm <name>` (Step 4). |
 | Regression test "fails" without the fix, but never ran | The test was stashed along with the fix, so `--tests` matched nothing and Gradle reported `No tests found for given includes`. Stash only the fix's paths, or — if the fix is already committed — check out only the fix's paths from `<fix-sha>~1` and restore them from `HEAD` afterwards (Step 9). |
 | Teeth-check `git stash pop` brings back unrelated changes, or the regression test passes with the fix supposedly removed | `git stash push -- <fix-paths>` printed `No local changes to save` — the fix was already committed or the paths were wrong — so nothing was neutralized and the `pop` applied an older stash. Stop at that message; for a committed fix use the `<fix-sha>~1` checkout form (Step 9). |
@@ -335,6 +336,7 @@ Run this section when the skill may have drifted from reality — e.g. after the
    - The backend-selection log line named in Step 6 (`Using storage type:`) is still emitted at startup
    - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config, and `database` (quoted or not) is still the default `storage.type` that Step 6's `sed` replaces
    - The shadow-jar relocation prefixes in Step 3 still match `build.gradle`
+   - `shadowJar` still writes a `*-all.jar` into `build/libs/` (Step 3). If the build script sets a different `archiveClassifier`, `ls build/libs/*-all.jar` fails and `$JAR` is empty. The `unzip -l "$JAR" | grep` then prints nothing, which looks like a resource missing from the jar rather than a missing jar
 3. For each problem found, open a GitHub issue. Write the body to a scratch file first (with a file-writing tool, not shell redirection). Some agent harnesses reject `$(...)` command substitution, so do not inline the body with `--body "$(cat <<'EOF' ...)"`:
    ```text
    **Section:** <which step or section is wrong>
