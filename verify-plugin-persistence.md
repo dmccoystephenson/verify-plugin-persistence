@@ -134,6 +134,8 @@ Wait for readiness, and **match on a marker that cannot be satisfied by a previo
 until [ "$(docker logs <container> 2>&1 | grep -c 'Done (')" -ge 1 ]; do sleep 10; done
 ```
 
+`-ge 1` is right only for a new container. `docker compose restart` keeps the container and its log, so after each restart the threshold must be one higher than the count before it. Otherwise the previous startup satisfies the wait.
+
 Start on the plugin's **default** backend first and confirm it still works. That is your regression baseline — a refactor of the storage-selection code can break the path nobody is looking at.
 
 **The container builds its own jar, and the entrypoint overwrites yours.** `post-create.sh` copies the image's jar into `plugins/` on every start, so a jar you `docker cp` in — or drop into the bind-mounted `plugins/` directory — is silently replaced, and you end up verifying the code as of the last image build. After changing plugin code you must `docker compose build` again. The Spigot/BuildTools layers are cached, so a rebuild is minutes rather than the original half hour. Confirm which code you are actually running by checking for a log line or behaviour unique to your change; do not assume.
@@ -165,6 +167,8 @@ The `sed` exits 0 even when a substitution matched nothing — e.g. `rcon.passwo
 ```bash
 grep -E '^(enable-rcon|rcon\.password)=' testmcserver/server.properties   # expect enable-rcon=true and your <password>
 ```
+
+Then start the server with `docker compose up -d` and wait as in Step 4. `docker compose down` removed the container, so its log starts from zero and `-ge 1` applies again.
 
 Use a minimal RCON client (packet: `<int32 len><int32 id><int32 type><body>\0\0`; type 3 = auth, 2 = command):
 
@@ -227,8 +231,11 @@ EOF
 Part (d) is the one people skip. A reflective deserializer will happily produce an object whose framework field is `null`; the data file is flawless and the plugin NPEs the moment anything reads a derived property. Pick a startup task that touches one, and read its code to confirm it actually dereferences the framework reference rather than only reading stored values. For Medieval Factions, "Disabling neutrality for existing factions" is logged only when `factions.allowNeutrality` is `false` (the default); it reads `faction.flags[plugin.flags.isNeutral]`, but `MfFlagValues.get` looks the value up in the stored `valuesByName` map without touching the faction's `plugin` field — so it proves the factions loaded and their flags are readable, **not** that the plugin reference was re-attached. A property that does dereference it is `MfFaction.power` (it calls `plugin.services.playerService`); until you have exercised a read of such a property, record (d) as not covered. Then confirm the log is clean:
 
 ```bash
+docker logs --since 5m <container> 2>&1 | grep -c 'Done ('               # expect at least 1
 docker logs --since 5m <container> 2>&1 | grep -icE "exception|severe"   # expect 0
 ```
+
+The first line guards the second. `--since 5m` covers only the last five minutes, and `grep -c` prints `0` for an empty window, so a startup that has aged out of the window reads as a clean log. If the first count is 0, widen `--since` past the restart, or use the `awk` form below, which selects by startup rather than by time.
 
 To read one specific startup out of an accumulating log:
 
@@ -299,10 +306,11 @@ Consult when something behaves oddly.
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
 | Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
 | Part (d) ran clean, yet reads NPE later in play | The chosen startup task only read stored values (e.g. a map lookup) and never dereferenced the framework reference. |
+| Exception count is 0, yet the startup under test logged errors | The `--since` window had moved past that startup, so `grep -c` counted nothing. Confirm the same window holds `Done (` (Step 7). |
 | Backend "switched" but results match the default backend | The config `sed` matched nothing and exited 0 — e.g. a pattern that expected `type: database` unquoted met `type: 'database'`. Check the startup log for the selected backend. |
 | Migration back to A reports success, but A's data was never rewritten | A's data was not cleared before `migrate toA`, so the file left from the first pass satisfied the check (Step 8, item 4). |
 | `NoClassDefFoundError` on the server only | Transitive dependency missing from the shadow jar's `include(dependency(...))` list. |
-| Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping. |
+| Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping, and raise the threshold after each `docker compose restart` (Step 4). |
 | Wait loop never returns | The container was recreated and the log reset, so a cumulative count can no longer be reached. |
 | Fix appears to have no effect on the server | The entrypoint copied the image's jar over yours. Rebuild the image; do not hot-copy. |
 | RCON connection refused, or auth rejected | The `server.properties` `sed` matched nothing and exited 0 (RCON still disabled, or an old `rcon.password` kept), or `compose.override.yml` was not in place when the container started, so port 25575 was never published. Check both lines with the `grep` in Step 5, and `docker compose ps` for the `25575` mapping. |
@@ -326,6 +334,7 @@ Run this section when the skill may have drifted from reality — e.g. after the
 1. Read this skill file from top to bottom.
 2. For each command, path, or assumption, verify it is still correct:
    - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh`, `down.sh` still exist and carry the documented variables (Step 4's `CURRENCIES_ENABLED`, `DYNMAP_ENABLED`, `PLACEHOLDER_API_ENABLED`, `SERVERUTILS_ENABLED`)
+   - The server still logs `Done (` when startup finishes. Step 4's wait never returns without it, and Step 7's window check reports 0
    - Step 2's example resource `src/main/resources/schemas/factions.json` still exists and is still loaded through `getResource`
    - Medieval Factions' repository interfaces still match Step 1's `interface Mf.*Repository` pattern. If they were renamed, the `grep` silently lists nothing
    - `.testcontainer/post-create.sh` still copies the image's jar into `plugins/` on every start (Step 4) — if it stopped, hot-copying a jar becomes viable and the rebuild advice is stale
