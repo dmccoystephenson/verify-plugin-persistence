@@ -228,7 +228,7 @@ print("LEAKED FRAMEWORK REF:", '"plugin"' in open('testmcserver/<data-dir>/<enti
 EOF
 ```
 
-The last line finds a reference only if it was stored under the literal name `plugin`. If Step 1 found a framework reference under any other field name, search for that name too; otherwise `False` proves nothing.
+The `LEAKED FRAMEWORK REF` line finds a reference only if it was stored under the literal name `plugin`. If Step 1 found a framework reference under any other field name, search for that name too; otherwise `False` proves nothing.
 
 Part (d) is the one people skip. A reflective deserializer will happily produce an object whose framework field is `null`; the data file is flawless and the plugin NPEs the moment anything reads a derived property. Pick a startup task that touches one, and read its code to confirm it actually dereferences the framework reference rather than only reading stored values. For Medieval Factions, "Disabling neutrality for existing factions" is logged only when `factions.allowNeutrality` is `false` (the default); it reads `faction.flags[plugin.flags.isNeutral]`, but `MfFlagValues.get` looks the value up in the stored `valuesByName` map without touching the faction's `plugin` field — so it proves the factions loaded and their flags are readable, **not** that the plugin reference was re-attached. A property that does dereference it is `MfFaction.power` (it calls `plugin.services.playerService`); until you have exercised a read of such a property, record (d) as not covered. Then confirm the log is clean:
 
