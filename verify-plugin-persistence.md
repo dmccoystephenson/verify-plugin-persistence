@@ -228,6 +228,8 @@ print("LEAKED FRAMEWORK REF:", '"plugin"' in open('testmcserver/<data-dir>/<enti
 EOF
 ```
 
+The last line finds a reference only if it was stored under the literal name `plugin`. If Step 1 found a framework reference under any other field name, search for that name too; otherwise `False` proves nothing.
+
 Part (d) is the one people skip. A reflective deserializer will happily produce an object whose framework field is `null`; the data file is flawless and the plugin NPEs the moment anything reads a derived property. Pick a startup task that touches one, and read its code to confirm it actually dereferences the framework reference rather than only reading stored values. For Medieval Factions, "Disabling neutrality for existing factions" is logged only when `factions.allowNeutrality` is `false` (the default); it reads `faction.flags[plugin.flags.isNeutral]`, but `MfFlagValues.get` looks the value up in the stored `valuesByName` map without touching the faction's `plugin` field — so it proves the factions loaded and their flags are readable, **not** that the plugin reference was re-attached. A property that does dereference it is `MfFaction.power` (it calls `plugin.services.playerService`); until you have exercised a read of such a property, record (d) as not covered. Then confirm the log is clean:
 
 ```bash
@@ -252,6 +254,8 @@ A migrator that reads A and writes B exercises both paths at once. `<cmd>` below
 3. Switch config to B, restart → the count must match.
 4. **Delete backend A's data**, then `migrate toA` → confirm it is recreated.
 5. Switch to A, restart → count matches and content is intact.
+
+Confirm each switch the way Step 6 does before trusting a count. Step 6's `sed` rewrites only `database` to `json`, so reverse the pattern for the opposite direction. Left unreversed, it matches nothing, exits 0, and the restart reads the same backend again.
 
 Item 4 matters: clear the migration *target*, not the source. A's data from item 1 is still on disk, so without clearing it an unchanged file proves nothing — the migrator may have written nothing at all. Deleting B's data instead leaves A's old file to pass the check, and if the migrator reads B's storage rather than memory, it also leaves nothing to migrate.
 
@@ -289,6 +293,8 @@ rm -f compose.override.yml
 git status --short          # must be clean of test scaffolding
 ```
 
+`docker compose down` removes the container, not the files on the host: `.env` and everything under `testmcserver/`, including the Step 5 and Step 6 edits and the test data, stay in the tree. `git status --short` omits ignored paths, so an empty listing does not show they are gone; `git status --short --ignored` lists them. A later run in the same tree would start with RCON on, on the backend last tested rather than the default, and with old entity files that satisfy Part (a) before anything is written. Start each verification from a fresh worktree.
+
 Report as a table of steps with concrete evidence (byte counts, loaded counts, migration counts, exception counts). State plainly what was **not** covered — console-driven verification cannot exercise claiming, gates, locks, chat, or anything needing a player in the world. Do not let a green table imply coverage you did not achieve.
 
 ---
@@ -305,9 +311,12 @@ Consult when something behaves oddly.
 | Tests pass but validation never runs | `getResource` was mocked to `null`, so schema loading threw and validation was silently disabled. |
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
 | Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
+| Part (a) passes before anything was written, or Step 4's baseline starts on the wrong backend | An earlier run's `testmcserver/` was still in the tree, with its data and config edits. Start from a fresh worktree (Step 10). |
+| Leak check prints `False`, yet a framework object is in the file | The check searches for the literal field name `plugin`; the reference was stored under another name. Search for the field names Step 1 found (Step 7). |
 | Part (d) ran clean, yet reads NPE later in play | The chosen startup task only read stored values (e.g. a map lookup) and never dereferenced the framework reference. |
 | Exception count is 0, yet the startup under test logged errors | The `--since` window had moved past that startup, so `grep -c` counted nothing. Confirm the same window holds `Enabling <Plugin>` (Step 7). |
 | Backend "switched" but results match the default backend | The config `sed` matched nothing and exited 0 — e.g. a pattern that expected `type: database` unquoted met `type: 'database'`. Check the startup log for the selected backend. |
+| Counts match after a switch in Step 8, but both restarts read the same backend | Step 6's `sed` rewrites only `database` to `json`, so it matched nothing in the opposite direction and exited 0. Reverse the pattern and confirm the switch as in Step 6 (Step 8). |
 | Migration back to A reports success, but A's data was never rewritten | A's data was not cleared before `migrate toA`, so the file left from the first pass satisfied the check (Step 8, item 4). |
 | `NoClassDefFoundError` on the server only | Transitive dependency missing from the shadow jar's `include(dependency(...))` list. |
 | Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping, and raise the threshold after each `docker compose restart` (Step 4). |
