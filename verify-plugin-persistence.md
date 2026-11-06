@@ -124,7 +124,9 @@ docker compose build      # 20-30 min: installs two JDKs, builds Ponder, runs Bu
 docker compose up -d
 ```
 
-For Medieval Factions: the four `*_ENABLED` variables are the optional plugins its `sample.env` defines, and the build-time comment describes its `Dockerfile`. For any other plugin, read its `sample.env` for the variables it actually defines before trimming.
+For Medieval Factions: its `sample.env` defines five optional-plugin `*_ENABLED` variables. The `sed` sets the four that default to `true`; `BLUEMAP_ENABLED` already defaults to `false`. The build-time comment describes its `Dockerfile`. For any other plugin, read its `sample.env` for the variables it actually defines before trimming.
+
+For Medieval Factions: compare `MINECRAFT_VERSION` in `.env` with the `--rev` in the `Dockerfile` before starting the server. The image holds only the Spigot jar that `--rev` built, and `post-create.sh` copies and runs `spigot-<MINECRAFT_VERSION>.jar`, so a mismatch leaves the container `Exited` with no server and the wait below never returns. They disagreed when last checked: `sample.env` said `1.21.11`, the `Dockerfile` `--rev 1.21.1`. `MINECRAFT_VERSION` reaches only the running container, not the build, so set it in `.env` to the `--rev` value; no rebuild is needed. If the server already failed this way, `testmcserver/` is no longer empty and `post-create.sh` skips copying the jar, so fixing `.env` is not enough. Confirm the directory holds no data you need (the server never ran), then delete it before restarting.
 
 Run the build with `run_in_background: true`. If a stale container holds the name, `docker rm <name>` first — check it is `Exited` before removing. `<name>` here, and `<container>` in every later command, is the container name that `docker compose ps -a` lists in its `NAME` column.
 
@@ -138,7 +140,7 @@ until [ "$(docker logs <container> 2>&1 | grep -c 'Done (')" -ge 1 ]; do sleep 1
 
 Start on the plugin's **default** backend first and confirm it still works. That is your regression baseline — a refactor of the storage-selection code can break the path nobody is looking at.
 
-**The container builds its own jar, and the entrypoint overwrites yours.** `post-create.sh` copies the image's jar into `plugins/` on every start, so a jar you `docker cp` in — or drop into the bind-mounted `plugins/` directory — is silently replaced, and you end up verifying the code as of the last image build. After changing plugin code you must `docker compose build` again. The Spigot/BuildTools layers are cached, so a rebuild is minutes rather than the original half hour. Confirm which code you are actually running by checking for a log line or behaviour unique to your change; do not assume.
+**The container builds its own jar, and the entrypoint overwrites yours.** `post-create.sh` copies the image's jar into `plugins/` on every start, so a jar you `docker cp` in — or drop into the bind-mounted `plugins/` directory — is silently replaced, and you end up verifying the code as of the last image build. After changing plugin code you must `docker compose build` again. For Medieval Factions, budget most of the original build for it: the `Dockerfile` runs `COPY . .` before BuildTools and the repo has no `.dockerignore`, so a changed source file, or anything written under `testmcserver/`, invalidates the BuildTools layers too. Only the JDK and Ponder layers stay cached. Confirm which code you are actually running by checking for a log line or behaviour unique to your change; do not assume.
 
 **Note also that `docker compose up -d` recreates the container when the compose config changed**, which resets the log. A cumulative wait like `grep -c 'Done (' -ge 5` will then never be satisfied. Re-count from zero after any recreate, or scope the wait with `docker logs --since`.
 
@@ -216,6 +218,8 @@ All four parts are required. Each catches something the others miss.
 
 Part (c) is worth doing per entity type, not just for the root. A repository that swallows read failures and reports "file is empty" will pass (a) and (b) while being completely unreadable — and will then overwrite the stored data on the next write. If a `catch` in the load path returns an empty collection, treat that entity type as unverified until a read has actually returned something.
 
+For Medieval Factions: the JSON repositories load through `JsonStorageManager.loadJsonData`, which still returns empty on a parse failure, so a low count at (c) can mean an unreadable file rather than missing data. It no longer loses the data: it logs `CRITICAL: Failed to parse`, copies the file to `<file>.corrupted.backup`, and `writeJsonFile` then refuses that file with `UnreadableJsonFileException`. Look for that log line and for `*.corrupted*` files in `<data-dir>` as well as checking the count.
+
 For (b), assert the negative explicitly. Take `<data-dir>` and `<entity>` from the entity-to-file list written down in Step 1; `<entities>` is the top-level key in that file that holds the list (open the file once to read it):
 
 ```bash
@@ -230,7 +234,7 @@ EOF
 
 The `LEAKED FRAMEWORK REF` line finds a reference only if it was stored under the literal name `plugin`. If Step 1 found a framework reference under any other field name, search for that name too; otherwise `False` proves nothing.
 
-Part (d) is the one people skip. A reflective deserializer will happily produce an object whose framework field is `null`; the data file is flawless and the plugin NPEs the moment anything reads a derived property. Pick a startup task that touches one, and read its code to confirm it actually dereferences the framework reference rather than only reading stored values. For Medieval Factions, "Disabling neutrality for existing factions" is logged only when `factions.allowNeutrality` is `false` (the default); it reads `faction.flags[plugin.flags.isNeutral]`, but `MfFlagValues.get` looks the value up in the stored `valuesByName` map without touching the faction's `plugin` field — so it proves the factions loaded and their flags are readable, **not** that the plugin reference was re-attached. A property that does dereference it is `MfFaction.power` (it calls `plugin.services.playerService`); until you have exercised a read of such a property, record (d) as not covered. Then confirm the log is clean:
+Part (d) is the one people skip. A reflective deserializer will happily produce an object whose framework field is `null`; the data file is flawless and the plugin NPEs the moment anything reads a derived property. Pick a startup task that touches one, and read its code to confirm it actually dereferences the framework reference rather than only reading stored values. For Medieval Factions, "Disabling neutrality for existing factions" is logged only when `factions.allowNeutrality` is `false` (the default); it reads `faction.flags[plugin.flags.isNeutral]`, but `MfFlagValues.get` looks the value up in the stored `valuesByName` map without touching the faction's `plugin` field — so it proves the factions loaded and their flags are readable, **not** that the plugin reference was re-attached. A property that does dereference it is `MfFaction.power`: it reads `plugin.config` through `maxMemberPower`, and calls `plugin.services.playerService` once per member, so Step 6's member-less faction reaches only the former. `/f list` reads `power` and needs no `Player` sender, but it runs in an async task, so read the log rather than the reply. Create at least two factions first: its sort calls `power` only then, and otherwise only sending the page reads it. Until you have exercised a read of such a property, record (d) as not covered. Then confirm the log is clean:
 
 ```bash
 docker logs --since 5m <container> 2>&1 | grep -c 'Enabling <Plugin>'    # expect at least 1
@@ -258,6 +262,8 @@ A migrator that reads A and writes B exercises both paths at once. `<cmd>` below
 Confirm each switch the way Step 6 does before trusting a count. Step 6's `sed` rewrites only `database` to `json`, so reverse the pattern for the opposite direction. Left unreversed, it matches nothing, exits 0, and the restart reads the same backend again.
 
 Item 4 matters: clear the migration *target*, not the source. A's data from item 1 is still on disk, so without clearing it an unchanged file proves nothing — the migrator may have written nothing at all. Deleting B's data instead leaves A's old file to pass the check, and if the migrator reads B's storage rather than memory, it also leaves nothing to migrate.
+
+For Medieval Factions: the subcommands are `toJson` and `toDatabase` (`/f migrate toJson`), and each stops with `Target storage already contains …` when its target holds any data. So item 2 needs an empty B too: data left there by Step 4's baseline or an earlier Step 7 pass stops the migration. Item 4's clearing is required, not just a stronger proof. The JSON target is the `storage.json.path` directory (`medieval_factions_data` by default); the default H2 target is the `medieval_factions_db` files named in `database.url`. The server log reports `Migrated <n> factions`, which is the root-entity count item 2 asks for; the reply's `Migrated <n> items` totals every entity type.
 
 ### 9 — Turn the finding into a permanent test
 
@@ -311,16 +317,19 @@ Consult when something behaves oddly.
 | Tests pass but validation never runs | `getResource` was mocked to `null`, so schema loading threw and validation was silently disabled. |
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
 | Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
+| A low count at Part (c), then `UnreadableJsonFileException` on writes and a `*.corrupted.backup` file | Medieval Factions could not parse that JSON file at load, so it reads as empty and refuses to overwrite it. Treat that entity type as a read failure (Step 7). |
 | Part (a) passes before anything was written, or Step 4's baseline starts on the wrong backend | An earlier run's `testmcserver/` was still in the tree, with its data and config edits. Start from a fresh worktree (Step 10). |
 | Leak check prints `False`, yet a framework object is in the file | The check searches for the literal field name `plugin`; the reference was stored under another name. Search for the field names Step 1 found (Step 7). |
-| Part (d) ran clean, yet reads NPE later in play | The chosen startup task only read stored values (e.g. a map lookup) and never dereferenced the framework reference. |
+| Part (d) ran clean, yet reads NPE later in play | The chosen startup task only read stored values (e.g. a map lookup) and never dereferenced the framework reference, or `/f list` ran on a single faction, whose sort never calls `power` (Step 7). |
 | Exception count is 0, yet the startup under test logged errors | The `--since` window had moved past that startup, so `grep -c` counted nothing. Confirm the same window holds `Enabling <Plugin>` (Step 7). |
 | Backend "switched" but results match the default backend | The config `sed` matched nothing and exited 0 — e.g. a pattern that expected `type: database` unquoted met `type: 'database'`. Check the startup log for the selected backend. |
 | Counts match after a switch in Step 8, but both restarts read the same backend | Step 6's `sed` rewrites only `database` to `json`, so it matched nothing in the opposite direction and exited 0. Reverse the pattern and confirm the switch as in Step 6 (Step 8). |
-| Migration back to A reports success, but A's data was never rewritten | A's data was not cleared before `migrate toA`, so the file left from the first pass satisfied the check (Step 8, item 4). |
+| Migration back to A reports success, but A's data was never rewritten | On a migrator that accepts a non-empty target, A's data was not cleared before `migrate toA`, so the file left from the first pass satisfied the check (Step 8, item 4). |
+| Migration fails with `Target storage already contains …` | Medieval Factions' migrators refuse a non-empty target: B still held data from an earlier step, or A was not cleared before `migrate toA` (Step 8). |
 | `NoClassDefFoundError` on the server only | Transitive dependency missing from the shadow jar's `include(dependency(...))` list. |
 | Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping, and raise the threshold after each `docker compose restart` (Step 4). |
 | Wait loop never returns | The container was recreated and the log reset, so a cumulative count can no longer be reached. |
+| Wait loop never returns and `docker compose ps -a` shows the container `Exited` | `MINECRAFT_VERSION` in `.env` differs from the `Dockerfile`'s `--rev`, so `post-create.sh` had no `spigot-<version>.jar` to run. Set it to the `--rev` value and delete the failed start's `testmcserver/`, or the jar copy is skipped again (Step 4). |
 | Fix appears to have no effect on the server | The entrypoint copied the image's jar over yours. Rebuild the image; do not hot-copy. |
 | RCON connection refused, or auth rejected | The `server.properties` `sed` matched nothing and exited 0 (RCON still disabled, or an old `rcon.password` kept), or `compose.override.yml` was not in place when the container started, so port 25575 was never published. Check both lines with the `grep` in Step 5, and `docker compose ps` for the `25575` mapping. |
 | RCON command produces no output | The command is async; check the server log, not the response. |
@@ -342,7 +351,9 @@ Run this section when the skill may have drifted from reality — e.g. after the
 
 1. Read this skill file from top to bottom.
 2. For each command, path, or assumption, verify it is still correct:
-   - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh`, `down.sh` still exist and carry the documented variables (Step 4's `CURRENCIES_ENABLED`, `DYNMAP_ENABLED`, `PLACEHOLDER_API_ENABLED`, `SERVERUTILS_ENABLED`)
+   - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh`, `down.sh` still exist and carry the documented variables (Step 4's `CURRENCIES_ENABLED`, `DYNMAP_ENABLED`, `PLACEHOLDER_API_ENABLED`, `SERVERUTILS_ENABLED`, plus `BLUEMAP_ENABLED`, which still defaults to `false`)
+   - `sample.env`'s `MINECRAFT_VERSION` and the `Dockerfile`'s `--rev` still disagree (Step 4). Once they match, the `.env` adjustment is no longer needed
+   - The `Dockerfile` still runs `COPY . .` before BuildTools with no `.dockerignore` (Step 4). If that changes, a rebuild may again be quick
    - The server still logs `Done (` when startup finishes, or Step 4's wait never returns
    - The server still logs `Enabling <Plugin>` when it enables a plugin, or Step 7's window guard and `awk` form find nothing
    - Step 2's example resource `src/main/resources/schemas/factions.json` still exists and is still loaded through `getResource`
@@ -351,7 +362,9 @@ Run this section when the skill may have drifted from reality — e.g. after the
    - `compose.yml` still sets neither `stdin_open` nor `tty`, its service is still named `testmcserver`, and the server-generated `testmcserver/server.properties` still defaults to `enable-rcon=false` with an empty `rcon.password=` (Step 5) — otherwise the RCON `sed` matches nothing
    - The console-drivable command named in Step 6 still exists and still accepts a non-player sender
    - The startup-task marker named in Step 7d still appears in the log, the config condition that gates it (`factions.allowNeutrality: false`) is still the default, and whether the code it runs now dereferences the faction's `plugin` field (it did not when last checked)
-   - The property Step 7d names as a real dereference (`MfFaction.power`, via `plugin.services.playerService`) still reads the faction's `plugin` field
+   - The property Step 7d names as a real dereference (`MfFaction.power`, via `maxMemberPower`'s `plugin.config` and, per member, `plugin.services.playerService`) still reads the faction's `plugin` field, and `/f list` still reads `power` without needing a `Player` sender
+   - `JsonStorageManager` still backs up an unparseable file, logs `CRITICAL: Failed to parse`, and refuses writes to it (Step 7)
+   - Both migrators still refuse a non-empty target with `Target storage already contains`, the `migrate` subcommands are still `toJson` and `toDatabase`, and each still logs `Migrated <n> factions` (Step 8)
    - The backend-selection log line named in Step 6 (`Using storage type:`) is still emitted at startup
    - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config, and `database` (quoted or not) is still the default `storage.type` that Step 6's `sed` replaces
    - The shadow-jar relocation prefixes in Step 3 still match `build.gradle`
