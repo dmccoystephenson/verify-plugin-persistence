@@ -187,7 +187,7 @@ Write it to the scratchpad, not the repo.
 
 Most gameplay commands require a `Player` sender. Find one that does not — read the command class and check whether it uses `sender` generically rather than casting to `Player`.
 
-For Medieval Factions: `/f admin create <name>` works from console, needs `mf.admin.create` (console has every permission), and requires `factions.allowLeaderlessFactions: true` in the plugin config. That key defaults to `false`, and until it is set the command replies `Leaderless factions are disabled. Enable 'factions.allowLeaderlessFactions' in the config.` and writes nothing, so set it in the same edit as the backend below. The command calls `factionService.save(...)`, which is the full repository write path.
+For Medieval Factions: `/f admin create <name>` works from console, needs `mf.admin.create` (console has every permission), and requires `factions.allowLeaderlessFactions: true` in the plugin config. That key defaults to `false`, and until it is set the command replies `Leaderless factions are disabled. Enable 'factions.allowLeaderlessFactions' in the config.` and writes nothing, so set it and restart before the first write, including any write on the default backend. The command calls `factionService.save(...)`, which is the full repository write path.
 
 Configure the plugin for the backend under test and restart:
 
