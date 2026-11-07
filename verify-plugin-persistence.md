@@ -187,7 +187,7 @@ Write it to the scratchpad, not the repo.
 
 Most gameplay commands require a `Player` sender. Find one that does not — read the command class and check whether it uses `sender` generically rather than casting to `Player`.
 
-For Medieval Factions: `/f admin create <name>` works from console, needs `mf.admin.create` (console has every permission), and requires `factions.allowLeaderlessFactions: true` in the plugin config. It calls `factionService.save(...)`, which is the full repository write path.
+For Medieval Factions: `/f admin create <name>` works from console, needs `mf.admin.create` (console has every permission), and requires `factions.allowLeaderlessFactions: true` in the plugin config. That key defaults to `false`, and until it is set the command replies `Leaderless factions are disabled. Enable 'factions.allowLeaderlessFactions' in the config.` and writes nothing, so set it in the same edit as the backend below. The command calls `factionService.save(...)`, which is the full repository write path.
 
 Configure the plugin for the backend under test and restart:
 
@@ -195,7 +195,7 @@ Configure the plugin for the backend under test and restart:
 sed -i "s/^  type: '\?database'\?/  type: json/" testmcserver/plugins/<Plugin>/config.yml
 ```
 
-`<Plugin>` is the `name` from the plugin's `plugin.yml`; Bukkit uses it for both the data folder under `plugins/` and the `Enabling <Plugin>` startup log line used in Step 7. The pattern tolerates quotes because the default may be written either way. For Medieval Factions: the plugin ships `type: 'database'` in its bundled `config.yml`, and whether the server's re-saved copy keeps the quotes depends on the plugin's config rewrite at first start. A trailing comment after the value is left in place and does not affect parsing.
+`<Plugin>` is the `name` from the plugin's `plugin.yml`; Bukkit uses it for both the data folder under `plugins/` and the `Enabling <Plugin>` startup log line used in Step 7. The pattern tolerates quotes because the default may be written either way. For Medieval Factions: the plugin ships `type: 'database'` in its bundled `config.yml`, and whether the server's copy keeps the quotes depends on the `saveConfig()` the plugin runs on every start. A trailing comment after the value is left in place and does not affect parsing.
 
 `sed` exits 0 even when its pattern matched nothing, so confirm the switch took before trusting anything that follows — otherwise you verify the default backend twice. For Medieval Factions, the startup log reports the backend it selected:
 
@@ -217,6 +217,8 @@ All four parts are required. Each catches something the others miss.
 | **d. Dereference** | A startup task that reads a *derived* property runs clean | Framework refs deserialized as `null` — the file looks perfect and every read NPEs |
 
 Part (c) is worth doing per entity type, not just for the root. A repository that swallows read failures and reports "file is empty" will pass (a) and (b) while being completely unreadable — and will then overwrite the stored data on the next write. If a `catch` in the load path returns an empty collection, treat that entity type as unverified until a read has actually returned something.
+
+For Medieval Factions: the count at (c) is the `<n> factions loaded` line. Claims, players, faction relationships, gates, locked blocks, duels, and duel invites log the same form. Laws, interaction statuses, gate creation contexts, and chat messages log no count at startup, so the log cannot prove (c) for them: each still needs a read that returns the entity.
 
 For Medieval Factions: the JSON repositories load through `JsonStorageManager.loadJsonData`, which still returns empty on a parse failure, so a low count at (c) can mean an unreadable file rather than missing data. It no longer loses the data: it logs `CRITICAL: Failed to parse`, copies the file to `<file>.corrupted.backup`, and `writeJsonFile` then refuses that file with `UnreadableJsonFileException`. Look for that log line and for `*.corrupted*` files in `<data-dir>` as well as checking the count.
 
@@ -318,6 +320,7 @@ Consult when something behaves oddly.
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
 | Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
 | A low count at Part (c), then `UnreadableJsonFileException` on writes and a `*.corrupted.backup` file | Medieval Factions could not parse that JSON file at load, so it reads as empty and refuses to overwrite it. Treat that entity type as a read failure (Step 7). |
+| Part (c) finds no count line for an entity type | For Medieval Factions: laws, interaction statuses, gate creation contexts, and chat messages log no `loaded` count at startup. Confirm them with a read that returns the entity (Step 7). |
 | Part (a) passes before anything was written, or Step 4's baseline starts on the wrong backend | An earlier run's `testmcserver/` was still in the tree, with its data and config edits. Start from a fresh worktree (Step 10). |
 | Leak check prints `False`, yet a framework object is in the file | The check searches for the literal field name `plugin`; the reference was stored under another name. Search for the field names Step 1 found (Step 7). |
 | Part (d) ran clean, yet reads NPE later in play | The chosen startup task only read stored values (e.g. a map lookup) and never dereferenced the framework reference, or `/f list` ran on a single faction, whose sort never calls `power` (Step 7). |
@@ -334,6 +337,7 @@ Consult when something behaves oddly.
 | RCON connection refused, or auth rejected | The `server.properties` `sed` matched nothing and exited 0 (RCON still disabled, or an old `rcon.password` kept), or `compose.override.yml` was not in place when the container started, so port 25575 was never published. Check both lines with the `grep` in Step 5, and `docker compose ps` for the `25575` mapping. |
 | RCON command produces no output | The command is async; check the server log, not the response. |
 | Console command is refused as player-only, or throws `ClassCastException` | The command needs a `Player` sender: it either checks for one or casts `sender` to `Player`. Pick a command that uses `sender` generically (Step 6). |
+| `/f admin create` replies `Leaderless factions are disabled`, and nothing is written | For Medieval Factions: `factions.allowLeaderlessFactions` defaults to `false`. Set it in the plugin config and restart (Step 6). |
 | `Conflict. The container name "…" is already in use` | Stale exited container. Confirm `docker compose ps -a` shows it `Exited`, then `docker rm <name>` (Step 4). |
 | Regression test "fails" without the fix, but never ran | The test was stashed along with the fix, so `--tests` matched nothing and Gradle reported `No tests found for given includes`. Stash only the fix's paths, or — if the fix is already committed — check out only the fix's paths from `<fix-sha>~1` and restore them from `HEAD` afterwards (Step 9). |
 | Teeth-check `git stash pop` brings back unrelated changes, or the regression test passes with the fix supposedly removed | `git stash push -- <fix-paths>` printed `No local changes to save` — the fix was already committed or the paths were wrong — so nothing was neutralized and the `pop` applied an older stash. Stop at that message; for a committed fix use the `<fix-sha>~1` checkout form (Step 9). |
@@ -363,10 +367,11 @@ Run this section when the skill may have drifted from reality — e.g. after the
    - The console-drivable command named in Step 6 still exists and still accepts a non-player sender
    - The startup-task marker named in Step 7d still appears in the log, the config condition that gates it (`factions.allowNeutrality: false`) is still the default, and whether the code it runs now dereferences the faction's `plugin` field (it did not when last checked)
    - The property Step 7d names as a real dereference (`MfFaction.power`, via `maxMemberPower`'s `plugin.config` and, per member, `plugin.services.playerService`) still reads the faction's `plugin` field, and `/f list` still reads `power` without needing a `Player` sender
+   - The startup log still reports `<n> factions loaded`, and the same form for claims, players, faction relationships, gates, locked blocks, duels, and duel invites, while laws, interaction statuses, gate creation contexts, and chat messages still log no count (Step 7)
    - `JsonStorageManager` still backs up an unparseable file, logs `CRITICAL: Failed to parse`, and refuses writes to it (Step 7)
    - Both migrators still refuse a non-empty target with `Target storage already contains`, the `migrate` subcommands are still `toJson` and `toDatabase`, and each still logs `Migrated <n> factions` (Step 8)
    - The backend-selection log line named in Step 6 (`Using storage type:`) is still emitted at startup
-   - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config, and `database` (quoted or not) is still the default `storage.type` that Step 6's `sed` replaces
+   - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config, `factions.allowLeaderlessFactions` still defaults to `false`, `database` (quoted or not) is still the default `storage.type` that Step 6's `sed` replaces, and `onEnable` still calls `saveConfig()` on every start
    - The shadow-jar relocation prefixes in Step 3 still match `build.gradle`
    - `shadowJar` still writes a `*-all.jar` into `build/libs/` (Step 3). If the build script sets a different `archiveClassifier`, `ls build/libs/*-all.jar` fails and `$JAR` is empty. The `unzip -l "$JAR" | grep` then prints nothing, which looks like a resource missing from the jar rather than a missing jar
 3. For each problem found, open a GitHub issue. Write the body to a scratch file first (with a file-writing tool, not shell redirection). Some agent harnesses reject `$(...)` command substitution, so do not inline the body with `--body "$(cat <<'EOF' ...)"`:
