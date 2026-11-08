@@ -106,6 +106,8 @@ JAR=$(ls build/libs/*-all.jar)
 unzip -l "$JAR" | grep -E "schemas/|<your-lib>"          # resources and libs actually shipped
 ```
 
+Check that `echo "$JAR"` prints exactly one path before trusting the listing. If the `ls` matched no jar, `$JAR` is empty. If it matched more than one, such as a jar left by an earlier build under another name, `$JAR` holds both paths in a single argument. Either way `unzip` fails, its error goes to stderr, and the `grep` prints nothing. That looks the same as a resource missing from the jar.
+
 If the change loads resources or uses a library reflectively, write a throwaway class that does exactly that against `-cp "$JAR"` alone. Relocated names apply. For Medieval Factions, the prefix is `com.dansplugins.factionsystem.shadow`; for any other plugin, take it from the `relocate(...)` calls in its build script:
 
 ```java
@@ -329,6 +331,7 @@ Consult when something behaves oddly.
 | Counts match after a switch in Step 8, but both restarts read the same backend | Step 6's `sed` rewrites only `database` to `json`, so it matched nothing in the opposite direction and exited 0. Reverse the pattern and confirm the switch as in Step 6 (Step 8). |
 | Migration back to A reports success, but A's data was never rewritten | On a migrator that accepts a non-empty target, A's data was not cleared before `migrate toA`, so the file left from the first pass satisfied the check (Step 8, item 4). |
 | Migration fails with `Target storage already contains …` | Medieval Factions' migrators refuse a non-empty target: B still held data from an earlier step, or A was not cleared before `migrate toA` (Step 8). |
+| Step 3's jar listing shows none of the expected resources or libraries | `$JAR` did not hold exactly one path: `ls build/libs/*-all.jar` matched no jar or more than one, so `unzip` failed and `grep` had nothing to match. Check `echo "$JAR"` before reading the listing (Step 3). |
 | `NoClassDefFoundError` on the server only | Transitive dependency missing from the shadow jar's `include(dependency(...))` list. |
 | Wait loop returns instantly | The readiness marker matched a *previous* startup. Count occurrences instead of grepping, and raise the threshold after each `docker compose restart` (Step 4). |
 | Wait loop never returns | The container was recreated and the log reset, so a cumulative count can no longer be reached. |
