@@ -366,13 +366,15 @@ Run this section when the skill may have drifted from reality — e.g. after the
    - Step 2's example resource `src/main/resources/schemas/factions.json` still exists and is still loaded through `getResource`
    - Medieval Factions' repository interfaces still match Step 1's `interface Mf.*Repository` pattern. If they were renamed, the `grep` silently lists nothing
    - `.testcontainer/post-create.sh` still copies the image's jar into `plugins/` on every start (Step 4) — if it stopped, hot-copying a jar becomes viable and the rebuild advice is stale
+   - `.testcontainer/post-create.sh` still runs `spigot-<MINECRAFT_VERSION>.jar` and still skips copying it when `testmcserver/` is not empty (Step 4). Otherwise the advice to delete a failed start's `testmcserver/` is stale
    - `compose.yml` still sets neither `stdin_open` nor `tty`, its service is still named `testmcserver`, and the server-generated `testmcserver/server.properties` still defaults to `enable-rcon=false` with an empty `rcon.password=` (Step 5) — otherwise the RCON `sed` matches nothing
-   - The console-drivable command named in Step 6 still exists and still accepts a non-player sender
+   - The console-drivable command named in Step 6 still exists and still accepts a non-player sender, still needs `mf.admin.create`, and still replies `Leaderless factions are disabled` when `factions.allowLeaderlessFactions` is off
    - The startup-task marker named in Step 7d still appears in the log, the config condition that gates it (`factions.allowNeutrality: false`) is still the default, and whether the code it runs now dereferences the faction's `plugin` field (it did not when last checked)
    - The property Step 7d names as a real dereference (`MfFaction.power`, via `maxMemberPower`'s `plugin.config` and, per member, `plugin.services.playerService`) still reads the faction's `plugin` field, and `/f list` still reads `power` without needing a `Player` sender
    - The startup log still reports `<n> factions loaded`, and the same form for claims, players, faction relationships, gates, locked blocks, duels, and duel invites, while laws, interaction statuses, gate creation contexts, and chat messages still log no count (Step 7)
    - `JsonStorageManager` still backs up an unparseable file, logs `CRITICAL: Failed to parse`, and refuses writes to it (Step 7)
    - Both migrators still refuse a non-empty target with `Target storage already contains`, the `migrate` subcommands are still `toJson` and `toDatabase`, and each still logs `Migrated <n> factions` (Step 8)
+   - The migration targets Step 8 clears are still where it says: the JSON data under `storage.json.path` (default `medieval_factions_data`) and the H2 files named in `database.url` (default `medieval_factions_db`). If either default moved, item 4 clears the wrong path and the migration is refused
    - The backend-selection log line named in Step 6 (`Using storage type:`) is still emitted at startup
    - Config keys (`storage.type`, `factions.allowLeaderlessFactions`) still match the plugin's config, `factions.allowLeaderlessFactions` still defaults to `false`, `database` (quoted or not) is still the default `storage.type` that Step 6's `sed` replaces, and `onEnable` still calls `saveConfig()` on every start
    - The shadow-jar relocation prefixes in Step 3 still match `build.gradle`
