@@ -360,13 +360,13 @@ Run this section when the skill may have drifted from reality — e.g. after the
 2. For each command, path, or assumption, verify it is still correct:
    - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh`, `down.sh` still exist and carry the documented variables (Step 4's `CURRENCIES_ENABLED`, `DYNMAP_ENABLED`, `PLACEHOLDER_API_ENABLED`, `SERVERUTILS_ENABLED`, plus `BLUEMAP_ENABLED`, which still defaults to `false`)
    - `sample.env`'s `MINECRAFT_VERSION` and the `Dockerfile`'s `--rev` still disagree (Step 4). Once they match, the `.env` adjustment is no longer needed
-   - `post-create.sh` still runs `spigot-<MINECRAFT_VERSION>.jar` and still skips copying it when `testmcserver/` is not empty (Step 4). Otherwise the advice to delete a failed start's `testmcserver/` is stale
    - The `Dockerfile` still runs `COPY . .` before BuildTools with no `.dockerignore` (Step 4). If that changes, a rebuild may again be quick
    - The server still logs `Done (` when startup finishes, or Step 4's wait never returns
    - The server still logs `Enabling <Plugin>` when it enables a plugin, or Step 7's window guard and `awk` form find nothing
    - Step 2's example resource `src/main/resources/schemas/factions.json` still exists and is still loaded through `getResource`
    - Medieval Factions' repository interfaces still match Step 1's `interface Mf.*Repository` pattern. If they were renamed, the `grep` silently lists nothing
    - `.testcontainer/post-create.sh` still copies the image's jar into `plugins/` on every start (Step 4) — if it stopped, hot-copying a jar becomes viable and the rebuild advice is stale
+   - `.testcontainer/post-create.sh` still runs `spigot-<MINECRAFT_VERSION>.jar` and still skips copying it when `testmcserver/` is not empty (Step 4). Otherwise the advice to delete a failed start's `testmcserver/` is stale
    - `compose.yml` still sets neither `stdin_open` nor `tty`, its service is still named `testmcserver`, and the server-generated `testmcserver/server.properties` still defaults to `enable-rcon=false` with an empty `rcon.password=` (Step 5) — otherwise the RCON `sed` matches nothing
    - The console-drivable command named in Step 6 still exists and still accepts a non-player sender, still needs `mf.admin.create`, and still replies `Leaderless factions are disabled` when `factions.allowLeaderlessFactions` is off
    - The startup-task marker named in Step 7d still appears in the log, the config condition that gates it (`factions.allowNeutrality: false`) is still the default, and whether the code it runs now dereferences the faction's `plugin` field (it did not when last checked)
