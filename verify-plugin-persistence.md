@@ -303,6 +303,8 @@ rm -f compose.override.yml
 git status --short          # must be clean of test scaffolding
 ```
 
+Some agent harnesses reject `rm` just as they reject `>` (Step 5). If yours does, delete the file with `python3 -c "import os; os.remove('compose.override.yml')"` instead. Unlike `rm -f`, it raises `FileNotFoundError` if the file is already gone, which is harmless here. Then check that `ls compose.override.yml` reports no such file.
+
 `docker compose down` removes the container, not the files on the host: `.env` and everything under `testmcserver/`, including the Step 5 and Step 6 edits and the test data, stay in the tree. `git status --short` omits ignored paths, so an empty listing does not show they are gone; `git status --short --ignored` lists them. A later run in the same tree would start with RCON on, on the backend last tested rather than the default, and with old entity files that satisfy Part (a) before anything is written. Start each verification from a fresh worktree.
 
 Report as a table of steps with concrete evidence (byte counts, loaded counts, migration counts, exception counts). State plainly what was **not** covered — console-driven verification cannot exercise claiming, gates, locks, chat, or anything needing a player in the world. Do not let a green table imply coverage you did not achieve.
@@ -318,6 +320,7 @@ Consult when something behaves oddly.
 | `JsonIOException: Failed making field 'java.util.ResourceBundle#parent' accessible` | A domain object holds a plugin/server reference and was handed to a reflective serializer. Persist via DTOs instead. |
 | Step 1's source listing prints nothing, though the plugin has repositories | A `**` glob was used without `shopt -s globstar`, so it matched one directory level only. Use the `find` form (Step 1). |
 | Step 1's repository `grep` prints nothing, though the plugin has repository interfaces | The `Mf` prefix is Medieval Factions' naming; another plugin names its interfaces differently. Substitute that plugin's naming (Step 1). |
+| Step 2's probe prints `PROBE[<name>] OK`, but no file for that repository appears on disk | The write failed without throwing, so the probe had nothing to catch. Treat that repository as broken, not passing (Step 2). |
 | Tests pass but validation never runs | `getResource` was mocked to `null`, so schema loading threw and validation was silently disabled. |
 | Data file written but every read NPEs | Framework field deserialized as `null`; it must be re-attached during mapping. |
 | Entity type is write-only: file looks correct, reads return nothing | A read-side deserializer is missing an adapter the write side has (e.g. `Instant`), and the repository's `catch` reports the file as empty. The next write then persists only the new entity and drops the rest. |
