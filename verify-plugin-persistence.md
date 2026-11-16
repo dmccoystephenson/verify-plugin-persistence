@@ -303,7 +303,7 @@ rm -f compose.override.yml
 git status --short          # must be clean of test scaffolding
 ```
 
-Some agent harnesses reject `rm` just as they reject `>` (Step 5). If yours does, delete the file with `python3 -c "import os; os.remove('compose.override.yml')"` instead. Then check that `ls compose.override.yml` reports no such file.
+Some agent harnesses reject `rm` just as they reject `>` (Step 5). If yours does, delete the file with `python3 -c "import os; os.remove('compose.override.yml')"` instead. Unlike `rm -f`, it raises `FileNotFoundError` if the file is already gone, which is harmless here. Then check that `ls compose.override.yml` reports no such file.
 
 `docker compose down` removes the container, not the files on the host: `.env` and everything under `testmcserver/`, including the Step 5 and Step 6 edits and the test data, stay in the tree. `git status --short` omits ignored paths, so an empty listing does not show they are gone; `git status --short --ignored` lists them. A later run in the same tree would start with RCON on, on the backend last tested rather than the default, and with old entity files that satisfy Part (a) before anything is written. Start each verification from a fresh worktree.
 
