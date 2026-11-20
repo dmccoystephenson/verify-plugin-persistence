@@ -126,7 +126,7 @@ docker compose build      # 20-30 min: installs two JDKs, builds Ponder, runs Bu
 docker compose up -d
 ```
 
-For Medieval Factions: its `sample.env` defines five optional-plugin `*_ENABLED` variables. The `sed` sets the four that default to `true`; `BLUEMAP_ENABLED` already defaults to `false`. The build-time comment describes its `Dockerfile`. For any other plugin, read its `sample.env` for the variables it actually defines before trimming.
+For Medieval Factions: its `sample.env` defines six optional-plugin `*_ENABLED` variables. The `sed` sets the four that default to `true`; `BLUEMAP_ENABLED` and `SLIMEFUN_ENABLED` already default to `false`. The build-time comment describes its `Dockerfile`. For any other plugin, read its `sample.env` for the variables it actually defines before trimming.
 
 For Medieval Factions: compare `MINECRAFT_VERSION` in `.env` with the `--rev` in the `Dockerfile` before starting the server. The image holds only the Spigot jar that `--rev` built, and `post-create.sh` copies and runs `spigot-<MINECRAFT_VERSION>.jar`, so a mismatch leaves the container `Exited` with no server and the wait below never returns. They disagreed when last checked: `sample.env` said `1.21.11`, the `Dockerfile` `--rev 1.21.1`. `MINECRAFT_VERSION` reaches only the running container, not the build, so set it in `.env` to the `--rev` value; no rebuild is needed. If the server already failed this way, `testmcserver/` is no longer empty and `post-create.sh` skips copying the jar, so fixing `.env` is not enough. Confirm the directory holds no data you need (the server never ran), then delete it before restarting.
 
@@ -361,7 +361,7 @@ Run this section when the skill may have drifted from reality — e.g. after the
 
 1. Read this skill file from top to bottom.
 2. For each command, path, or assumption, verify it is still correct:
-   - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh`, `down.sh` still exist and carry the documented variables (Step 4's `CURRENCIES_ENABLED`, `DYNMAP_ENABLED`, `PLACEHOLDER_API_ENABLED`, `SERVERUTILS_ENABLED`, plus `BLUEMAP_ENABLED`, which still defaults to `false`)
+   - `compose.yml`, `Dockerfile`, `sample.env`, `up.sh`, `down.sh` still exist and carry the documented variables (Step 4's `CURRENCIES_ENABLED`, `DYNMAP_ENABLED`, `PLACEHOLDER_API_ENABLED`, `SERVERUTILS_ENABLED`, plus `BLUEMAP_ENABLED` and `SLIMEFUN_ENABLED`, which still default to `false`)
    - `sample.env`'s `MINECRAFT_VERSION` and the `Dockerfile`'s `--rev` still disagree (Step 4). Once they match, the `.env` adjustment is no longer needed
    - The `Dockerfile` still runs `COPY . .` before BuildTools with no `.dockerignore` (Step 4). If that changes, a rebuild may again be quick
    - The server still logs `Done (` when startup finishes, or Step 4's wait never returns
